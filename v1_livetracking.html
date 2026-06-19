@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <title>WebGazer Experiment met Validatie</title>
+    <script src="https://cdn.jsdelivr.net/npm/webgazer@2.1.1/dist/webgazer.js" type="text/javascript"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #808080; font-family: Arial, sans-serif; }
+        .screen { display: none; width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; justify-content: center; align-items: center; flex-direction: column; color: white; text-align: center; }
+        .active { display: flex; }
+        
+        /* Formulieren & Donkere Schermen styling */
+        #welcome-screen, #instruction-screen { background-color: #333; color: white; }
+        .form-group { margin-bottom: 15px; text-align: left; width: 300px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; color: #ddd; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: #444; color: white; font-size: 16px; box-sizing: border-box; }
+        .form-group input:focus, .form-group select:focus { outline: none; border-color: #007bff; }
+        
+        /* Wit scherm voor optimale gezichtsverlichting */
+        #calibration-screen, #validation-screen { background-color: #ffffff; color: black; }
+        
+        button { padding: 15px 30px; font-size: 18px; cursor: pointer; border: none; border-radius: 5px; margin-top: 20px; margin-right: 10px; margin-left: 10px; transition: background 0.2s; }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-primary:hover { background-color: #0056b3; }
+        .btn-primary:disabled { background-color: #555; cursor: not-allowed; opacity: 0.6; }
+        .btn-secondary { background-color: #6c757d; color: white; }
+        
+        #calibration-point { position: absolute; width: 30px; height: 30px; background-color: rgb(255, 0, 0); border-radius: 50%; border: 2px solid white; cursor: pointer; display: none; transform: translate(-50%, -50%); z-index: 1000; transition: background-color 0.2s ease; box-shadow: 0 0 10px rgba(0,0,0,0.3); }
+        #validation-point { position: absolute; width: 30px; height: 30px; background-color: #007bff; border-radius: 50%; border: 2px solid black; display: none; transform: translate(-50%, -50%); z-index: 1000; cursor: pointer; box-shadow: 0 0 10px rgba(0,0,0,0.2); }
+        
+        #live-gaze-dot { position: absolute; width: 10px; height: 10px; background-color: #ff00ff; border: 2px solid black; border-radius: 50%; display: none; transform: translate(-50%, -50%); z-index: 2000; pointer-events: none; }
+        
+        #validation-instruction-text { position: absolute; top: 5vh; width: 100%; color: #333; }
+        #validation-instruction-text h2 { color: #000; }
+        #validation-results { color: #000; z-index: 1001; }
+        #accuracy-text { color: #333; font-size: 20px; }
+        
+        #stimulus { max-width: 90vw; max-height: 90vh; object-fit: contain; }
+        p { max-width: 600px; font-size: 18px; line-height: 1.6; color: #ddd; margin: 10px auto; }
+        #validation-instruction-text p { color: #555; }
+    </style>
+</head>
+<body>
+
+    <div id="live-gaze-dot"></div>
+
+    <div id="welcome-screen" class="screen active">
+        <h2>Nieuw Eyetracking Experiment</h2>
+        <p style="margin-bottom: 30px;">Alle velden zijn verplicht om het experiment te kunnen starten.</p>
+        
+        <div class="form-group">
+            <label for="participant-id">Participant Nummer/ID *</label>
+            <input type="text" id="participant-id" placeholder="bijv. 01 of P04" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="participant-age">Leeftijd *</label>
+            <input type="number" id="participant-age" min="1" max="120" placeholder="bijv. 24" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="participant-gender">Geslacht *</label>
+            <select id="participant-gender" required>
+                <option value="">Selecteer...</option>
+                <option value="Man">Man</option>
+                <option value="Vrouw">Vrouw</option>
+                <option value="Ingevuld als Non-binair/X">Non-binair / X</option>
+            </select>
+        </div>
+
+        <button id="start-btn" class="btn-primary" disabled>Start Webcam Tracker</button>
+    </div>
+
+    <div id="instruction-screen" class="screen">
+        <h2>Kalibratie Instructies</h2>
+        <p>Wanneer de tracker start, verschijnt er linksboven een videobeeld. <b>Wacht eerst tot je jouw eigen gezicht goed in beeld ziet en het kader rond je gezicht groen kleurt.</b></p>
+        <p>Daarna verschijnen er achtereenvolgens 5 stippen op het scherm (in de hoeken en het midden).</p>
+        <p><b>Belangrijk:</b> je moet elke stip 5 keer aanklikken. Kijk altijd <i>eerst</i> strak naar de stip en klik er <i>daarna</i> pas 5 keer op. Bij elke klik verandert de stip van kleur.</p>
+        <p>Tijdens het kalibreren zie je een klein paars stipje dat je live blikveld toont. Het kan absoluut geen kwaad als dit paarse stipje in het begin nog niet goed meevolgt; dit leert het systeem juist tijdens het klikken!</p>
+        <button id="start-calibration-btn" class="btn-primary">Start de Kalibratie</button>
+    </div>
+
+    <div id="calibration-screen" class="screen">
+        <div id="calibration-point"></div>
+    </div>
+
+    <div id="validation-screen" class="screen">
+        <div id="validation-instruction-text">
+            <h2>Accuraatheid Meten</h2>
+            <p>Probeer nu zo goed mogelijk te focussen op de <b>blauwe stip</b> in het midden van het scherm.</p>
+            <p style="font-size: 16px; color: #666;">(Maak je geen zorgen als het paarse stipje hierbij wat afwijkt van je werkelijke blik, dat is heel normaal.)</p>
+            <p id="validation-prompt-text" style="color: #007bff; font-weight: bold; font-size: 22px;">Blijf strak naar de blauwe stip kijken en klik er één keer op!</p>
+        </div>
+        
+        <div id="validation-point"></div>
+        
+        <div id="validation-results" style="display:none;">
+            <h3>Resultaat Kalibratie:</h3>
+            <p id="accuracy-text"></p>
+            <button id="recalibrate-btn" class="btn-secondary">Kalibratie Opnieuw Doen</button>
+            <button id="to-pre-experiment-btn" class="btn-primary">Ga verder</button>
+        </div>
+    </div>
+
+    <div id="pre-experiment-screen" class="screen">
+        <h2>Klaar voor de start</h2>
+        <p>Je krijgt dadelijk achtereenvolgens enkele foto's van vrouwen te zien.</p>
+        <p>Er is geen specifieke opdracht of taak. Je mag <b>gewoon vrij kijken</b> naar de afbeeldingen, exact zoals je dat normaal zou doen.</p>
+        <button id="start-experiment-btn" class="btn-primary">Start met kijken</button>
+    </div>
+
+    <div id="experiment-screen" class="screen">
+        <img id="stimulus" src="foto1.jpg" alt="Stimulus">
+    </div>
+
+    <div id="end-screen" class="screen">
+        <h2>Bedankt om te kijken!</h2>
+        <p>De data is succesvol opgeslagen. Je mag dit venster nu sluiten.</p>
+    </div>
+
+    <script src="aoi_database.js"></script>
+    <script>
+    console.log("AOI database geladen:", aoiDatabase);
+    </script>
+
+    <script>
+        // Elementen ophalen voor live validatie
+        const participantInput = document.getElementById('participant-id');
+        const ageInput = document.getElementById('participant-age');
+        const genderInput = document.getElementById('participant-gender');
+        const startBtn = document.getElementById('start-btn');
+        
+        // Functie die controleert of ALLE velden correct zijn ingevuld
+        function validateForm() {
+            const idValid = participantInput.value.trim() !== "";
+            const ageValid = ageInput.value.trim() !== "" && parseInt(ageInput.value) > 0;
+            const genderValid = genderInput.value !== "";
+
+            // De knop wordt pas geactiveerd (disabled = false) als alles TRUE is
+            startBtn.disabled = !(idValid && ageValid && genderValid);
+        }
+
+        // Luister naar invoer op alle drie de velden
+        participantInput.addEventListener('input', validateForm);
+        ageInput.addEventListener('input', validateForm);
+        genderInput.addEventListener('change', validateForm);
+
+        startBtn.addEventListener('click', initTracker);
+        document.getElementById('start-calibration-btn').addEventListener('click', startCalibration);
+        document.getElementById('start-experiment-btn').addEventListener('click', startExperiment);
+        document.getElementById('recalibrate-btn').addEventListener('click', resetAndRecalibrate);
+        document.getElementById('to-pre-experiment-btn').addEventListener('click', function() {
+            changeScreen('validation-screen', 'pre-experiment-screen');
+        });
+
+        const points = [
+            {x: 10, y: 10}, {x: 90, y: 10},
+            {x: 50, y: 50},
+            {x: 10, y: 90}, {x: 90, y: 90}
+        ];
+        
+        const colors = [
+            "rgb(255, 0, 0)", "rgb(255, 69, 0)", "rgb(255, 140, 0)", "rgb(255, 185, 0)", "rgb(255, 230, 0)"
+        ];
+
+        let participantMetadata = { id: "", age: "", gender: "" };
+        let currentPointIndex = 0;
+        let clicksOnCurrentPoint = 0;
+        let experimentData = [];
+        const stimuli = [
+            "foto1.jpg",
+            "foto2.jpg",
+            "foto3.jpg",
+            "foto4.jpg",
+            "foto5.jpg",
+            "foto6.jpg",
+            "foto7.jpg"
+        ];
+        let currentStimulusIndex = 0;
+        let currentStimulus = stimuli[0];
+        let validationBuffer = []; 
+        const BUFFER_WINDOW_MS = 500; 
+
+        let isCalibrationActive = false;
+        let isValidationActive = false;
+        let isExperimentRunning = false;
+        let isTrackerInitialized = false;
+        let showFeedbackDot = false;
+        let experimentStartTime = 0; 
+
+        async function initTracker() {
+            // Sla de definitieve metadata op
+            participantMetadata.id = participantInput.value.trim().replace(/[^a-zA-Z0-9-_]/g, ''); 
+            participantMetadata.age = ageInput.value.trim();
+            participantMetadata.gender = genderInput.value;
+
+            changeScreen('welcome-screen', 'instruction-screen');
+            
+            if (!isTrackerInitialized) {
+                await webgazer.setGazeListener(function(data, elapsedTime) {
+                    if (data == null) return;
+
+                    const feedbackDot = document.getElementById('live-gaze-dot');
+                    if (showFeedbackDot) {
+                        feedbackDot.style.left = data.x + 'px';
+                        feedbackDot.style.top = data.y + 'px';
+                        feedbackDot.style.display = 'block';
+                    } else {
+                        feedbackDot.style.display = 'none';
+                    }
+
+                    if (isValidationActive) {
+                        validationBuffer.push({ x: data.x, y: data.y, t: performance.now() });
+                        const now = performance.now();
+                        validationBuffer = validationBuffer.filter(pt => (now - pt.t) <= BUFFER_WINDOW_MS);
+                    }
+                    
+                    if (isExperimentRunning) {
+                        const relativeTime = Math.round(elapsedTime - experimentStartTime);
+                        let imageX = null;
+                        let imageY = null;
+                        let aoi = "buiten_IA";
+
+                        try {
+                            const coords = screenToImageCoordinates(data.x, data.y);
+                            if (coords) {
+                                imageX = Math.round(coords.x);
+                                imageY = Math.round(coords.y);
+                                if (typeof determineAOI === "function") {
+                                    aoi = determineAOI(coords.x, coords.y, currentStimulus);
+                                }
+                            }
+                        } catch (e) {
+                            console.warn("AOI mapping error:", e);
+                        }
+
+                        experimentData.push({
+                            stimulus: currentStimulus,
+                            screen_x: Math.round(data.x),
+                            screen_y: Math.round(data.y),
+                            image_x: imageX,
+                            image_y: imageY,
+                            aoi: aoi,
+                            timestamp_ms: relativeTime
+                        });
+
+                        console.log("gaze logged", data.x, data.y);
+                    }
+                }).begin();
+                isTrackerInitialized = true;
+            }
+
+            webgazer.showVideoPreview(true).showPredictionPoints(false);
+        }
+
+        function startCalibration() {
+            changeScreen('instruction-screen', 'calibration-screen');
+            webgazer.showVideoPreview(false);
+            showFeedbackDot = true; 
+            isCalibrationActive = true;
+            showNextCalibrationPoint();
+        }
+
+        function showNextCalibrationPoint() {
+            if (currentPointIndex >= points.length) {
+                isCalibrationActive = false;
+                setupValidationTest();
+                return;
+            }
+
+            clicksOnCurrentPoint = 0;
+            const point = points[currentPointIndex];
+            const ptElement = document.getElementById('calibration-point');
+            
+            ptElement.style.backgroundColor = colors[0];
+            ptElement.style.left = point.x + 'vw';
+            ptElement.style.top = point.y + 'vh';
+            ptElement.style.display = 'block';
+
+            ptElement.onclick = function() {
+                clicksOnCurrentPoint++;
+                if (clicksOnCurrentPoint < 5) {
+                    ptElement.style.backgroundColor = colors[clicksOnCurrentPoint];
+                } else {
+                    currentPointIndex++;
+                    ptElement.style.display = 'none';
+                    setTimeout(showNextCalibrationPoint, 400);
+                }
+            };
+        }
+
+        function setupValidationTest() {
+            changeScreen('calibration-screen', 'validation-screen');
+            document.getElementById('validation-instruction-text').style.display = 'block';
+            document.getElementById('validation-results').style.display = 'none'; 
+            
+            const valPoint = document.getElementById('validation-point');
+            valPoint.style.left = '50vw';
+            valPoint.style.top = '50vh';
+            valPoint.style.display = 'block';
+
+            validationBuffer = [];
+            isValidationActive = true;
+
+        valPoint.onclick = function() {
+            isValidationActive = false; 
+            valPoint.style.display = 'none';
+            // showFeedbackDot = false;  <-- Uitgezet
+            // document.getElementById('live-gaze-dot').style.display = 'none'; <-- Uitgezet
+            calculateAccuracyWithMedian();
+            };
+        }
+
+        function calculateAccuracyWithMedian() {
+            document.getElementById('validation-instruction-text').style.display = 'none';
+
+            if (validationBuffer.length === 0) {
+                document.getElementById('accuracy-text').innerText = "Geen blikdata gevonden. Probeer opnieuw.";
+                document.getElementById('validation-results').style.display = 'block';
+                return;
+            }
+
+            const xValues = validationBuffer.map(pt => pt.x).sort((a, b) => a - b);
+            const yValues = validationBuffer.map(pt => pt.y).sort((a, b) => a - b);
+            
+            const lowMiddle = Math.floor((xValues.length - 1) / 2);
+            const highMiddle = Math.ceil((xValues.length - 1) / 2);
+            
+            const medianX = (xValues[lowMiddle] + xValues[highMiddle]) / 2;
+            const medianY = (yValues[lowMiddle] + yValues[highMiddle]) / 2;
+
+            const targetX = window.innerWidth / 2;
+            const targetY = window.innerHeight / 2;
+
+            const dx = medianX - targetX;
+            const dy = medianY - targetY;
+            const pixelError = Math.round(Math.sqrt(dx * dx + dy * dy));
+            const estimatedDegrees = (pixelError / 40).toFixed(1);
+
+            let kwalificatie = "";
+            let statusColor = "#000";
+            if (estimatedDegrees < 1.5) {
+                kwalificatie = "Uitstekend!";
+                statusColor = "#28a745";
+            } else if (estimatedDegrees < 3.0) {
+                kwalificatie = "Acceptabel";
+                statusColor = "#ffc107";
+            } else {
+                kwalificatie = "Slecht (Tip: beweeg je hoofd minder en focus op de stip)";
+                statusColor = "#dc3545";
+            }
+
+            document.getElementById('accuracy-text').innerHTML = `
+                <b>Gecorrigeerde afwijking (Mediaan):</b> ${pixelError} pixels<br>
+                <b>Geschatte foutmarge:</b> ~${estimatedDegrees}° visuele hoek<br>
+                <b>Status:</b> <span style="color: ${statusColor}; font-weight: bold;">${kwalificatie}</span>
+            `;
+            
+            document.getElementById('validation-results').style.display = 'block';
+        }
+
+        function resetAndRecalibrate() {
+            currentPointIndex = 0;
+            clicksOnCurrentPoint = 0;
+            validationBuffer = [];
+            document.getElementById('validation-results').style.display = 'none';
+            webgazer.clearData(); 
+            
+            const mockX = window.innerWidth / 2;
+            const mockY = window.innerHeight / 2;
+            webgazer.recordScreenPosition(mockX, mockY, 'click');
+            
+            const feedbackDot = document.getElementById('live-gaze-dot');
+            feedbackDot.style.left = mockX + 'px';
+            feedbackDot.style.top = mockY + 'px';
+            feedbackDot.style.display = 'block';
+            
+            showFeedbackDot = true; 
+            startCalibration();
+        }
+
+        function screenToImageCoordinates(screenX, screenY) {
+            const img = document.getElementById("stimulus");
+            const rect = img.getBoundingClientRect();
+
+            if (
+                screenX < rect.left ||
+                screenX > rect.right ||
+                screenY < rect.top ||
+                screenY > rect.bottom
+            ) {
+                return null;
+            }
+
+            const imageX = ((screenX - rect.left) / rect.width) * img.naturalWidth;
+            const imageY = ((screenY - rect.top) / rect.height) * img.naturalHeight;
+
+            return { x: imageX, y: imageY };
+        }
+
+        function determineAOI(imageX, imageY, stimulusName) {
+            const stimulusAOI = aoiDatabase[stimulusName];
+
+            if (!stimulusAOI) {
+                return "onbekend";
+            }
+
+            for (const [name, box] of Object.entries(stimulusAOI)) {
+                const [left, top, right, bottom] = box;
+                if (
+                    imageX >= left &&
+                    imageX <= right &&
+                    imageY >= top &&
+                    imageY <= bottom
+                ) {
+                    return name;
+                }
+            }
+
+            return "buiten_IA";
+        }
+
+        function startExperiment() {
+            showFeedbackDot = true; // <-- Aangepast naar true
+            // document.getElementById('live-gaze-dot').style.display = 'none'; <-- Uitgezet
+            changeScreen('pre-experiment-screen', 'experiment-screen');
+            experimentData = [];
+            currentStimulusIndex = 0;
+            showNextStimulus();
+        }
+
+        function showNextStimulus() {
+            if (currentStimulusIndex >= stimuli.length) {
+                endExperiment();
+                return;
+            }
+
+            currentStimulus = stimuli[currentStimulusIndex];
+            const img = document.getElementById("stimulus");
+
+            img.onload = function () {
+                experimentStartTime = performance.now();
+                isExperimentRunning = true;
+
+                setTimeout(() => {
+                    isExperimentRunning = false;
+                    currentStimulusIndex++;
+                    showNextStimulus();
+                }, 5000);
+            };
+
+            img.src = currentStimulus;
+        }
+
+        function endExperiment() {
+            isExperimentRunning = false;
+            webgazer.end();
+
+            // Toon het eindscherm en verberg de laatste foto
+            changeScreen('experiment-screen', 'end-screen');
+
+            let csvContent = ""; 
+
+            // 1. Meta-data en ruwe data wegschrijven
+            csvContent += `# Participant ID: ${participantMetadata.id}\n`;
+            csvContent += `# Leeftijd: ${participantMetadata.age}\n`;
+            csvContent += `# Geslacht: ${participantMetadata.gender}\n`;
+            csvContent += "Stimulus,Screen_X,Screen_Y,Image_X,Image_Y,AOI,Timestamp_MS\n";
+
+            experimentData.forEach(row => {
+                csvContent += `${row.stimulus},${row.screen_x},${row.screen_y},${row.image_x},${row.image_y},${row.aoi},${row.timestamp_ms}\n`;
+            });
+
+            // 2. Tijd per AOI berekenen (Overall + Groepen)
+            let aoiDurations = {}; // Overall
+            let aoiDurationsGeenDecollete = {}; // Foto 1-2-3
+            let aoiDurationsVeelDecollete = {}; // Foto 4-5-6
+
+            let totalTimeMs = 0;
+            let totalTimeGeenDecollete = 0;
+            let totalTimeVeelDecollete = 0;
+
+            const groupGeenDecollete = ["foto1.jpg", "foto2.jpg", "foto3.jpg"];
+            const groupVeelDecollete = ["foto4.jpg", "foto5.jpg", "foto6.jpg"];
+
+            // Loop door de data om tijdsverschillen (deltas) tussen meetpunten te berekenen
+            for (let i = 1; i < experimentData.length; i++) {
+                let current = experimentData[i];
+                let prev = experimentData[i - 1];
+
+            // Bereken alleen de tijd als we nog naar dezelfde afbeelding kijken
+            if (current.stimulus === prev.stimulus) {
+                let deltaMs = current.timestamp_ms - prev.timestamp_ms;
+            
+            // Veiligheidscheck tegen negatieve of onrealistische sprongen in tijd
+            if (deltaMs > 0 && deltaMs < 1000) {
+                // -- OVERALL --
+                if (!aoiDurations[current.aoi]) aoiDurations[current.aoi] = 0;
+                aoiDurations[current.aoi] += deltaMs;
+                totalTimeMs += deltaMs;
+
+                // -- GROEP 1: Geen decollete --
+                if (groupGeenDecollete.includes(current.stimulus)) {
+                    if (!aoiDurationsGeenDecollete[current.aoi]) aoiDurationsGeenDecollete[current.aoi] = 0;
+                    aoiDurationsGeenDecollete[current.aoi] += deltaMs;
+                    totalTimeGeenDecollete += deltaMs;
+                }
+
+                // -- GROEP 2: Veel decollete --
+                if (groupVeelDecollete.includes(current.stimulus)) {
+                    if (!aoiDurationsVeelDecollete[current.aoi]) aoiDurationsVeelDecollete[current.aoi] = 0;
+                    aoiDurationsVeelDecollete[current.aoi] += deltaMs;
+                    totalTimeVeelDecollete += deltaMs;
+                }
+            }
+        }
+    }
+
+    // 3. Samenvattingen toevoegen aan de CSV
+
+    // Helper functie om secties overzichtelijk weg te schrijven
+    function genereerSamenvatting(titel, durationsObj, totalTime, aantalFotos) {
+        let content = `\n\n### ${titel} ###\n`;
+        
+        if (aantalFotos > 0) {
+            content += "AOI,Totale Duur (ms),Totale Duur (sec),Gemiddelde per foto (ms),Relatief Percentage\n";
+        } else {
+            content += "AOI,Totale Duur (ms),Totale Duur (sec),Relatief Percentage\n";
+        }
+
+        const sortedAOIs = Object.keys(durationsObj).sort();
+
+        for (const aoi of sortedAOIs) {
+            let durationMs = durationsObj[aoi];
+            let durationSec = (durationMs / 1000).toFixed(2);
+            let percentage = totalTime > 0 ? ((durationMs / totalTime) * 100).toFixed(2) : 0;
+            
+            if (aantalFotos > 0) {
+                let gemMs = Math.round(durationMs / aantalFotos);
+                content += `${aoi},${durationMs},${durationSec},${gemMs},"${percentage}%"\n`;
+            } else {
+                content += `${aoi},${durationMs},${durationSec},"${percentage}%"\n`;
+            }
+        }
+        return content;
+    }
+
+    // Voeg de drie blokken toe
+    csvContent += genereerSamenvatting("OVERALL AOI SAMENVATTING (Alle foto's)", aoiDurations, totalTimeMs, 0);
+    csvContent += genereerSamenvatting("GROEP 1: GEEN DECOLLETE (Foto 1-2-3)", aoiDurationsGeenDecollete, totalTimeGeenDecollete, 3);
+    csvContent += genereerSamenvatting("GROEP 2: VEEL DECOLLETE (Foto 4-5-6)", aoiDurationsVeelDecollete, totalTimeVeelDecollete, 3);
+
+    // 4. Veilige Blob export
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `eyetracking_data_P${participantMetadata.id}.csv`);
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Geheugen netjes opschonen
+    URL.revokeObjectURL(url);
+
+    alert("Experiment voltooid.");
+}
+
+        function changeScreen(hideId, showId) {
+            document.getElementById(hideId).classList.remove('active');
+            document.getElementById(showId).classList.add('active');
+        }
+
+        window.onbeforeunload = function() { webgazer.end(); }
+    </script>
+</body>
+</html>
