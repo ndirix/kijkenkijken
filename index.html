@@ -555,7 +555,7 @@
             const endScreen = document.getElementById('end-screen');
             endScreen.innerHTML = `<h2>Data aan het opslaan...</h2><p>Even geduld, je gegevens worden veilig naar OSF verstuurd.</p>`;
 
-            fetch("https://pipe.jspsych.org/api/v1/data", {
+            fetch("https://pipe.jspsych.org/api/data/", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
