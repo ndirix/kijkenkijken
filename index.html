@@ -488,86 +488,120 @@
                 let current = experimentData[i];
                 let prev = experimentData[i - 1];
 
-            // Bereken alleen de tijd als we nog naar dezelfde afbeelding kijken
-            if (current.stimulus === prev.stimulus) {
-                let deltaMs = current.timestamp_ms - prev.timestamp_ms;
-            
-            // Veiligheidscheck tegen negatieve of onrealistische sprongen in tijd
-            if (deltaMs > 0 && deltaMs < 1000) {
-                // -- OVERALL --
-                if (!aoiDurations[current.aoi]) aoiDurations[current.aoi] = 0;
-                aoiDurations[current.aoi] += deltaMs;
-                totalTimeMs += deltaMs;
+                // Bereken alleen de tijd als we nog naar dezelfde afbeelding kijken
+                if (current.stimulus === prev.stimulus) {
+                    let deltaMs = current.timestamp_ms - prev.timestamp_ms;
+                
+                    // Veiligheidscheck tegen negatieve of onrealistische sprongen in tijd
+                    if (deltaMs > 0 && deltaMs < 1000) {
+                        // -- OVERALL --
+                        if (!aoiDurations[current.aoi]) aoiDurations[current.aoi] = 0;
+                        aoiDurations[current.aoi] += deltaMs;
+                        totalTimeMs += deltaMs;
 
-                // -- GROEP 1: Geen decollete --
-                if (groupGeenDecollete.includes(current.stimulus)) {
-                    if (!aoiDurationsGeenDecollete[current.aoi]) aoiDurationsGeenDecollete[current.aoi] = 0;
-                    aoiDurationsGeenDecollete[current.aoi] += deltaMs;
-                    totalTimeGeenDecollete += deltaMs;
-                }
+                        // -- GROEP 1: Geen decollete --
+                        if (groupGeenDecollete.includes(current.stimulus)) {
+                            if (!aoiDurationsGeenDecollete[current.aoi]) aoiDurationsGeenDecollete[current.aoi] = 0;
+                            aoiDurationsGeenDecollete[current.aoi] += deltaMs;
+                            totalTimeGeenDecollete += deltaMs;
+                        }
 
-                // -- GROEP 2: Veel decollete --
-                if (groupVeelDecollete.includes(current.stimulus)) {
-                    if (!aoiDurationsVeelDecollete[current.aoi]) aoiDurationsVeelDecollete[current.aoi] = 0;
-                    aoiDurationsVeelDecollete[current.aoi] += deltaMs;
-                    totalTimeVeelDecollete += deltaMs;
+                        // -- GROEP 2: Veel decollete --
+                        if (groupVeelDecollete.includes(current.stimulus)) {
+                            if (!aoiDurationsVeelDecollete[current.aoi]) aoiDurationsVeelDecollete[current.aoi] = 0;
+                            aoiDurationsVeelDecollete[current.aoi] += deltaMs;
+                            totalTimeVeelDecollete += deltaMs;
+                        }
+                    }
                 }
             }
-        }
-    }
 
-    // 3. Samenvattingen toevoegen aan de CSV
+            // 3. Samenvattingen toevoegen aan de CSV
+            function genereerSamenvatting(titel, durationsObj, totalTime, aantalFotos) {
+                let content = `\n\n### ${titel} ###\n`;
+                
+                if (aantalFotos > 0) {
+                    content += "AOI,Totale Duur (ms),Totale Duur (sec),Gemiddelde per foto (ms),Relatief Percentage\n";
+                } else {
+                    content += "AOI,Totale Duur (ms),Totale Duur (sec),Relatief Percentage\n";
+                }
 
-    // Helper functie om secties overzichtelijk weg te schrijven
-    function genereerSamenvatting(titel, durationsObj, totalTime, aantalFotos) {
-        let content = `\n\n### ${titel} ###\n`;
-        
-        if (aantalFotos > 0) {
-            content += "AOI,Totale Duur (ms),Totale Duur (sec),Gemiddelde per foto (ms),Relatief Percentage\n";
-        } else {
-            content += "AOI,Totale Duur (ms),Totale Duur (sec),Relatief Percentage\n";
-        }
+                const sortedAOIs = Object.keys(durationsObj).sort();
 
-        const sortedAOIs = Object.keys(durationsObj).sort();
-
-        for (const aoi of sortedAOIs) {
-            let durationMs = durationsObj[aoi];
-            let durationSec = (durationMs / 1000).toFixed(2);
-            let percentage = totalTime > 0 ? ((durationMs / totalTime) * 100).toFixed(2) : 0;
-            
-            if (aantalFotos > 0) {
-                let gemMs = Math.round(durationMs / aantalFotos);
-                content += `${aoi},${durationMs},${durationSec},${gemMs},"${percentage}%"\n`;
-            } else {
-                content += `${aoi},${durationMs},${durationSec},"${percentage}%"\n`;
+                for (const aoi of sortedAOIs) {
+                    let durationMs = durationsObj[aoi];
+                    let durationSec = (durationMs / 1000).toFixed(2);
+                    let percentage = totalTime > 0 ? ((durationMs / totalTime) * 100).toFixed(2) : 0;
+                    
+                    if (aantalFotos > 0) {
+                        let gemMs = Math.round(durationMs / aantalFotos);
+                        content += `${aoi},${durationMs},${durationSec},${gemMs},"${percentage}%"\n`;
+                    } else {
+                        content += `${aoi},${durationMs},${durationSec},"${percentage}%"\n`;
+                    }
+                }
+                return content;
             }
+
+            // Voeg de drie blokken toe
+            csvContent += genereerSamenvatting("OVERALL AOI SAMENVATTING (Alle foto's)", aoiDurations, totalTimeMs, 0);
+            csvContent += genereerSamenvatting("GROEP 1: GEEN DECOLLETE (Foto 1-2-3)", aoiDurationsGeenDecollete, totalTimeGeenDecollete, 3);
+            csvContent += genereerSamenvatting("GROEP 2: VEEL DECOLLETE (Foto 4-5-6)", aoiDurationsVeelDecollete, totalTimeVeelDecollete, 3);
+
+            // 4. DATA VERSTUREN NAAR OSF VIA DATAPIPE
+            const dataPipeExperimentId = "xBiqpUlxL2qO"; // Jouw unieke ID ingevuld!
+            const bestandsnaam = `eyetracking_data_P${participantMetadata.id}.csv`;
+
+            const endScreen = document.getElementById('end-screen');
+            endScreen.innerHTML = `<h2>Data aan het opslaan...</h2><p>Even geduld, je gegevens worden veilig naar OSF verstuurd.</p>`;
+
+            fetch("https://pipe.jspsych.org/api/v1/data", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "*/*"
+                },
+                body: JSON.stringify({
+                    experimentID: dataPipeExperimentId,
+                    filename: bestandsnaam,
+                    data: csvContent
+                })
+            })
+            .then(response => {
+                if (response.ok) {
+                    endScreen.innerHTML = `
+                        <h2>Bedankt om te kijken!</h2>
+                        <p>De data is succesvol en anoniem opgeslagen op ons OSF-platform.</p>
+                        <p>Je mag dit venster nu veilig sluiten.</p>
+                    `;
+                    alert("Experiment voltooid en data succesvol opgeslagen.");
+                } else {
+                    throw new Error("DataPipe weigerde het bestand.");
+                }
+            })
+            .catch(error => {
+                console.error("OSF Upload mislukt:", error);
+                
+                // Fallback knop mocht er iets misgaan met internet
+                endScreen.innerHTML = `
+                    <h2>Oeps, er ging iets mis bij het online opslaan</h2>
+                    <p>Klik op de knop hieronder om je databestand handmatig te downloaden en stuur het op naar de onderzoeker.</p>
+                    <button id="manual-download-btn" class="btn-primary">Download Data</button>
+                `;
+
+                document.getElementById("manual-download-btn").onclick = function() {
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.setAttribute("href", url);
+                    link.setAttribute("download", bestandsnaam);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                };
+            });
         }
-        return content;
-    }
-
-    // Voeg de drie blokken toe
-    csvContent += genereerSamenvatting("OVERALL AOI SAMENVATTING (Alle foto's)", aoiDurations, totalTimeMs, 0);
-    csvContent += genereerSamenvatting("GROEP 1: GEEN DECOLLETE (Foto 1-2-3)", aoiDurationsGeenDecollete, totalTimeGeenDecollete, 3);
-    csvContent += genereerSamenvatting("GROEP 2: VEEL DECOLLETE (Foto 4-5-6)", aoiDurationsVeelDecollete, totalTimeVeelDecollete, 3);
-
-    // 4. Veilige Blob export
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `eyetracking_data_P${participantMetadata.id}.csv`);
-
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    // Geheugen netjes opschonen
-    URL.revokeObjectURL(url);
-
-    alert("Experiment voltooid.");
-}
-
         function changeScreen(hideId, showId) {
             document.getElementById(hideId).classList.remove('active');
             document.getElementById(showId).classList.add('active');
